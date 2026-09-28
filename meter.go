@@ -11,10 +11,11 @@ import (
 	"fyne.io/fyne/v2"
 )
 
-// The tray icon mimics the one of UpDown Meter: a dark frame with the upload
-// meter on the top half and the download meter on the bottom half, drawn at
-// twice the original 16x16 size for high DPI trays. Unlike UpDown Meter the
-// upload is red and the download green, as uploads are the ones to watch.
+// The tray icon mimics the one of UpDown Meter: a dark frame with two meters,
+// drawn at twice the original 16x16 size for high DPI trays. Unlike UpDown
+// Meter the download meter is on the top half and the upload meter on the
+// bottom half, like in the graph. The upload is red and the download green,
+// as uploads are the ones to watch.
 
 const (
 	iconSize   = 32
@@ -63,8 +64,8 @@ func drawMeter(up, down int) *image.RGBA {
 	// central divider
 	fill(img, image.Rect(2, 14, iconSize-2, 16), frameBorder)
 	fill(img, image.Rect(2, 16, iconSize-2, 18), color.Black)
-	drawBar(img, 2, up, upBright, upDark)
-	drawBar(img, 18, down, downBright, downDark)
+	drawBar(img, 2, down, downBright, downDark)
+	drawBar(img, 18, up, upBright, upDark)
 	return img
 }
 

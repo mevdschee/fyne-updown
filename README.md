@@ -9,9 +9,9 @@ ScriptFUSION, a Windows only .NET application.
 
 ### Features
 
-The tray icon shows two animated meters, like UpDown Meter does: upload on the
-top half and download on the bottom half. Unlike UpDown Meter upload is red and
-download green, as uploads are the ones to watch. They are sampled once per
+The tray icon shows two animated meters, like UpDown Meter does. Unlike UpDown
+Meter download is on the top half and upload on the bottom half, like in the
+graph, and upload is red and download green, as uploads are the ones to watch. They are sampled once per
 second, hovering the icon shows the current speeds. The full scale of the meters is the link speed that the
 adapter reports. Like in UpDown Meter it can be set per adapter, separately
 for download and upload, by clicking the adapter in the Adapters list. Pick a

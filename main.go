@@ -107,6 +107,10 @@ func main() {
 		u.status.Show()
 	}
 	u.monitor = monitor
+	a.Lifecycle().SetOnStarted(func() {
+		hideFromDock()
+		activateApp()
+	})
 	a.Lifecycle().SetOnStopped(func() {
 		if u.monitor != nil {
 			u.monitor.Close()
@@ -161,6 +165,7 @@ func (u *updown) buildUI() {
 
 func (u *updown) show() {
 	u.window.Show()
+	activateApp()
 	u.window.RequestFocus()
 }
 

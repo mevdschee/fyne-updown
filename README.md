@@ -17,8 +17,9 @@ second, hovering the icon shows the current speeds. The full scale of the meters
 adapter reports. Like in UpDown Meter it can be set per adapter, separately
 for download and upload, by clicking the adapter in the Adapters list. Pick a
 preset or type a speed in bits per second like 50M, 2.5G or 512k, Auto goes
-back to the link speed. Wireless adapters on Linux do not report a link speed,
-their meters stay empty until a scale is set.
+back to the link speed. Wireless adapters on Linux and the adapters of a macOS
+virtual machine do not report a link speed, their meters stay empty until a
+scale is set.
 
 The window (click Show in the tray menu) shows a graph of the recent traffic
 of the metered adapter, like btop does: download above the axis and upload
@@ -36,7 +37,8 @@ more (up to an hour). Below the graph are two list views:
   hour are removed from the list. Traffic that can not be linked to a
   process is listed as "(unknown)".
 
-Closing the window hides it, use Quit in the tray menu to exit.
+Closing the window hides it, use Quit in the tray menu to exit. On macOS the
+app is not shown in the Dock, as it lives in the menu bar.
 
 Blocking and shaping traffic per process is planned for a next version.
 

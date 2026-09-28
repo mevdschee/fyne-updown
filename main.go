@@ -86,14 +86,14 @@ type updown struct {
 func main() {
 	a := app.NewWithID("com.tqdev.fyne-updown")
 	u := &updown{app: a, histories: map[string]*history{}}
-	u.window = a.NewWindow("UpDown Meter")
+	u.window = a.NewWindow("Fyne UpDown")
 	u.buildUI()
 	u.window.Resize(fyne.NewSize(720, 540))
 	u.window.SetCloseIntercept(u.window.Hide)
 
 	if desk, ok := a.(desktop.App); ok {
 		u.desk = desk
-		desk.SetSystemTrayMenu(fyne.NewMenu("UpDown Meter",
+		desk.SetSystemTrayMenu(fyne.NewMenu("Fyne UpDown",
 			fyne.NewMenuItem("Show", u.show),
 		))
 		u.trayIcon = meterIcon(0, 0)

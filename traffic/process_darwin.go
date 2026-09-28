@@ -21,10 +21,12 @@ import (
 )
 
 // The macOS monitor reads the output of nettop, which reports cumulative
-// bytes per process and does not need root. A header starts each sample:
+// bytes per process, followed by its connections, and does not need root. A
+// header starts each sample:
 //
 //	time,,bytes_in,bytes_out,
 //	12:00:00.000000,Safari.123,4567,890,
+//	12:00:00.000000,tcp4 192.168.1.2:52429<->34.117.65.55:443,4000,800,
 //
 // nettop runs in a pseudo terminal, as it buffers its output when writing to
 // a pipe, which would make the samples arrive late and in bursts.
@@ -33,10 +35,17 @@ type darwinMonitor struct {
 	cmd   *exec.Cmd
 	out   *os.File
 	table *processTable
-	// last holds the latest totals of each process, guarded by table.mu
-	last map[int]totals
+	// last holds the latest totals of each process and conns those of each
+	// connection, both guarded by table.mu
+	last  map[int]totals
+	conns map[connKey]totals
 	// samples counts the headers, the first sample only sets the baseline
 	samples int
+}
+
+type connKey struct {
+	pid  int
+	conn string
 }
 
 type totals struct {
@@ -45,18 +54,20 @@ type totals struct {
 }
 
 func startProcessMonitor() (ProcessMonitor, error) {
-	cmd := exec.Command("/usr/bin/nettop", "-P", "-L", "0", "-s", "1", "-x", "-J", "bytes_in,bytes_out")
+	cmd := exec.Command("/usr/bin/nettop", "-n", "-L", "0", "-s", "1", "-x", "-J", "bytes_in,bytes_out")
 	out, err := pty.Start(cmd)
 	if err != nil {
 		return nil, err
 	}
-	m := &darwinMonitor{cmd: cmd, out: out, table: newProcessTable(), last: map[int]totals{}}
+	m := &darwinMonitor{cmd: cmd, out: out, table: newProcessTable(), last: map[int]totals{}, conns: map[connKey]totals{}}
 	go m.read(bufio.NewScanner(out))
 	return m, nil
 }
 
 func (m *darwinMonitor) read(s *bufio.Scanner) {
 	nameCol, inCol, outCol := -1, -1, -1
+	// the process that the following connections belong to
+	pid, name := -1, ""
 	for s.Scan() {
 		// the terminal ends lines with a carriage return and a newline
 		fields := strings.Split(strings.TrimRight(s.Text(), "\r"), ",")
@@ -70,31 +81,56 @@ func (m *darwinMonitor) read(s *bufio.Scanner) {
 		if nameCol < 0 || inCol < 0 || outCol < 0 || len(fields) <= max(nameCol, inCol, outCol) {
 			continue
 		}
-		name, pidText, ok := cutLast(fields[nameCol], ".")
-		if !ok {
+		recv, err1 := strconv.ParseUint(fields[inCol], 10, 64)
+		sent, err2 := strconv.ParseUint(fields[outCol], 10, 64)
+		if err1 != nil || err2 != nil {
 			continue
 		}
-		pid, err1 := strconv.Atoi(pidText)
-		recv, err2 := strconv.ParseUint(fields[inCol], 10, 64)
-		sent, err3 := strconv.ParseUint(fields[outCol], 10, 64)
-		if err1 != nil || err2 != nil || err3 != nil {
+		field := fields[nameCol]
+		if proto, remote, ok := parseConnection(field); ok {
+			if pid < 0 {
+				continue
+			}
+			names := func(int) string { return processName(pid, name) }
+			m.table.mu.Lock()
+			key := connKey{pid, field}
+			prev, ok := m.conns[key]
+			base := m.baseline(prev, ok, recv, sent)
+			m.conns[key] = totals{recv, sent, time.Now()}
+			m.table.addRemote(pid, names, proto, remote, recv-base.recv, sent-base.sent)
+			m.table.mu.Unlock()
 			continue
 		}
-		// nettop reports totals, add the increase so that idle processes
-		// expire, a decrease means the pid was reused. The first sample holds
-		// the traffic from before the start of the app, which is not counted.
+		short, pidText, ok := cutLast(field, ".")
+		p, err := strconv.Atoi(pidText)
+		if !ok || err != nil {
+			pid = -1
+			continue
+		}
+		pid, name = p, short
+		names := func(int) string { return processName(p, short) }
 		m.table.mu.Lock()
 		prev, ok := m.last[pid]
-		if !ok && m.samples <= 1 {
-			prev = totals{recv: recv, sent: sent}
-		}
-		if recv < prev.recv || sent < prev.sent {
-			prev = totals{}
-		}
+		base := m.baseline(prev, ok, recv, sent)
 		m.last[pid] = totals{recv, sent, time.Now()}
-		m.table.add(pid, func(int) string { return processName(pid, name) }, recv-prev.recv, sent-prev.sent)
+		m.table.add(pid, names, recv-base.recv, sent-base.sent)
 		m.table.mu.Unlock()
 	}
+}
+
+// baseline returns the totals to subtract from the new totals of a process
+// or connection. nettop reports totals, adding the increase makes idle
+// processes expire. A decrease means the pid or connection was reused. The
+// first sample holds the traffic from before the start of the app, which is
+// not counted. It must be called with table.mu held.
+func (m *darwinMonitor) baseline(prev totals, seen bool, recv, sent uint64) totals {
+	if !seen && m.samples <= 1 {
+		return totals{recv: recv, sent: sent}
+	}
+	if recv < prev.recv || sent < prev.sent {
+		return totals{}
+	}
+	return prev
 }
 
 // processName returns the name of a process, nettop truncates it to the 15
@@ -117,14 +153,6 @@ func indexOf(fields []string, name string) int {
 	return -1
 }
 
-func cutLast(s, sep string) (string, string, bool) {
-	i := strings.LastIndex(s, sep)
-	if i < 0 {
-		return s, "", false
-	}
-	return s[:i], s[i+len(sep):], true
-}
-
 func (m *darwinMonitor) Processes() []Counter {
 	m.table.mu.Lock()
 	for pid, t := range m.last {
@@ -132,8 +160,17 @@ func (m *darwinMonitor) Processes() []Counter {
 			delete(m.last, pid)
 		}
 	}
+	for key, t := range m.conns {
+		if time.Since(t.seen) > idleTimeout {
+			delete(m.conns, key)
+		}
+	}
 	m.table.mu.Unlock()
 	return m.table.list()
+}
+
+func (m *darwinMonitor) Remotes(pid int) []Counter {
+	return m.table.remotes(pid)
 }
 
 func (m *darwinMonitor) Close() {

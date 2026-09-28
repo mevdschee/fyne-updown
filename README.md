@@ -35,7 +35,10 @@ more (up to an hour). Below the graph are two list views:
 - Processes: the current download and upload speed and the totals of each
   process since the app was started. Processes that have been idle for an
   hour are removed from the list. Traffic that can not be linked to a
-  process is listed as "(unknown)".
+  process is listed as "(unknown)". Clicking a process opens a window with
+  its path, command line, user and start time, and the traffic per remote
+  host, port and protocol. Host names come from reverse DNS, so they may
+  differ from the names the process connected to.
 
 Closing the window hides it, use Quit in the tray menu to exit. On macOS the
 app is not shown in the Dock, as it lives in the menu bar.

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"net/netip"
 	"runtime"
 	"strconv"
 	"strings"
@@ -76,6 +77,9 @@ type updown struct {
 	adapters  *listView
 	processes *listView
 	monitor   traffic.ProcessMonitor
+	// details holds the open process windows by pid
+	details map[int]fyne.Window
+	hosts   *hosts
 
 	adapterRates rates
 	processRates rates
@@ -85,7 +89,12 @@ type updown struct {
 
 func main() {
 	a := app.NewWithID("com.tqdev.fyne-updown")
-	u := &updown{app: a, histories: map[string]*history{}}
+	u := &updown{
+		app:       a,
+		histories: map[string]*history{},
+		details:   map[int]fyne.Window{},
+		hosts:     &hosts{names: map[netip.Addr]string{}},
+	}
 	u.window = a.NewWindow("Fyne UpDown")
 	u.buildUI()
 	u.window.Resize(fyne.NewSize(720, 540))
@@ -149,6 +158,7 @@ func (u *updown) buildUI() {
 		{"Received", 110, true},
 		{"Sent", 110, true},
 	}, 2, true)
+	u.processes.onTapped = func(r row) { u.showProcess(int(r.values[1]), r.text[0]) }
 	u.status = widget.NewLabel("")
 	u.status.Wrapping = fyne.TextWrapWord
 	u.status.Importance = widget.WarningImportance

@@ -218,6 +218,7 @@ func (m *linuxMonitor) Processes() []Counter {
 					pid = 0
 				}
 				m.table.add(pid, processName, c.recv, c.sent)
+				m.table.addRemote(pid, processName, protoName(key.proto), key.remote, c.recv, c.sent)
 				c.recv, c.sent = 0, 0
 			}
 		}
@@ -228,6 +229,24 @@ func (m *linuxMonitor) Processes() []Counter {
 	m.table.mu.Unlock()
 	m.mu.Unlock()
 	return m.table.list()
+}
+
+func (m *linuxMonitor) Remotes(pid int) []Counter {
+	return m.table.remotes(pid)
+}
+
+func protoName(proto uint8) string {
+	switch proto {
+	case unix.IPPROTO_TCP:
+		return "tcp"
+	case unix.IPPROTO_UDP:
+		return "udp"
+	case unix.IPPROTO_ICMP:
+		return "icmp"
+	case unix.IPPROTO_ICMPV6:
+		return "icmpv6"
+	}
+	return "ip/" + strconv.Itoa(int(proto))
 }
 
 func processName(pid int) string {

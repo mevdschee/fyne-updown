@@ -3,9 +3,11 @@
 package traffic
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"path/filepath"
 	"runtime"
 	"syscall"
@@ -225,6 +227,7 @@ func onEvent(rec *eventRecord) uintptr {
 		return 0
 	}
 	var sent, ipv6 bool
+	proto := "tcp"
 	switch rec.ID {
 	case 10, 42: // TCP and UDP IPv4 send
 		sent = true
@@ -235,6 +238,9 @@ func onEvent(rec *eventRecord) uintptr {
 		ipv6 = true
 	default:
 		return 0
+	}
+	if rec.ID >= 42 {
+		proto = "udp"
 	}
 	data := unsafe.Slice((*byte)(rec.UserData), rec.UserDataLength)
 	// the destination address follows, skip loopback traffic like the
@@ -247,18 +253,40 @@ func onEvent(rec *eventRecord) uintptr {
 	}
 	pid := int(uint32(data[0]) | uint32(data[1])<<8 | uint32(data[2])<<16 | uint32(data[3])<<24)
 	size := uint64(uint32(data[4]) | uint32(data[5])<<8 | uint32(data[6])<<16 | uint32(data[7])<<24)
-	m.table.mu.Lock()
+	recv := size
 	if sent {
-		m.table.add(pid, processName, 0, size)
+		recv = 0
 	} else {
-		m.table.add(pid, processName, size, 0)
+		size = 0
 	}
+	m.table.mu.Lock()
+	m.table.add(pid, processName, recv, size)
+	m.table.addRemote(pid, processName, proto, remoteAddr(data, ipv6), recv, size)
 	m.table.mu.Unlock()
 	return 0
 }
 
+// remoteAddr reads the destination address and port, which follow the size
+// and the source address. For received packets the destination is also the
+// remote end of the connection. Ports are in network byte order.
+func remoteAddr(data []byte, ipv6 bool) netip.AddrPort {
+	addrLen, portOff := 4, 16
+	if ipv6 {
+		addrLen, portOff = 16, 40
+	}
+	if len(data) < portOff+2 {
+		return netip.AddrPort{}
+	}
+	addr, _ := netip.AddrFromSlice(data[8 : 8+addrLen])
+	return netip.AddrPortFrom(addr, binary.BigEndian.Uint16(data[portOff:]))
+}
+
 func (m *windowsMonitor) Processes() []Counter {
 	return m.table.list()
+}
+
+func (m *windowsMonitor) Remotes(pid int) []Counter {
+	return m.table.remotes(pid)
 }
 
 func processName(pid int) string {

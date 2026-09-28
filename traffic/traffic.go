@@ -3,6 +3,7 @@ package traffic
 
 import (
 	"net"
+	"net/netip"
 	"sort"
 	"strconv"
 	"sync"
@@ -24,6 +25,9 @@ type Counter struct {
 	// second, zero when unknown.
 	LinkDown uint64
 	LinkUp   uint64
+	// Proto and Remote are set for the remote endpoints of a process.
+	Proto  string
+	Remote netip.AddrPort
 }
 
 // Adapters returns the cumulative counters of all network adapters.
@@ -56,6 +60,9 @@ type ProcessMonitor interface {
 	// Processes returns the cumulative counters of all processes that had
 	// traffic since the monitor was started.
 	Processes() []Counter
+	// Remotes returns the cumulative counters per remote endpoint of a
+	// process, as far as the platform reports them.
+	Remotes(pid int) []Counter
 	Close()
 }
 
@@ -77,6 +84,17 @@ type processTable struct {
 type process struct {
 	Counter
 	lastActive time.Time
+	remotes    map[remoteKey]*remote
+}
+
+type remoteKey struct {
+	proto string
+	addr  netip.AddrPort
+}
+
+type remote struct {
+	recv, sent uint64
+	lastActive time.Time
 }
 
 func newProcessTable() *processTable {
@@ -88,19 +106,43 @@ func (t *processTable) add(pid int, name func(pid int) string, recv, sent uint64
 	if recv+sent == 0 {
 		return
 	}
-	p, ok := t.procs[pid]
-	if !ok {
-		p = &process{Counter: Counter{PID: pid, Name: name(pid)}}
-		p.Key = processKey(p.PID, p.Name)
-		t.procs[pid] = p
-	}
+	p := t.get(pid, name)
 	p.Recv += recv
 	p.Sent += sent
 	p.lastActive = time.Now()
 }
 
-// list drops the processes that have been idle for idleTimeout, so that the
-// table does not grow with every short lived process.
+// addRemote counts traffic of a process with a remote endpoint, it does not
+// change the totals of the process, add does. It must be called with mu held.
+func (t *processTable) addRemote(pid int, name func(pid int) string, proto string, addr netip.AddrPort, recv, sent uint64) {
+	if recv+sent == 0 || !addr.IsValid() {
+		return
+	}
+	p := t.get(pid, name)
+	key := remoteKey{proto, netip.AddrPortFrom(addr.Addr().Unmap(), addr.Port())}
+	r, ok := p.remotes[key]
+	if !ok {
+		r = &remote{}
+		p.remotes[key] = r
+	}
+	r.recv += recv
+	r.sent += sent
+	r.lastActive = time.Now()
+	p.lastActive = r.lastActive
+}
+
+func (t *processTable) get(pid int, name func(pid int) string) *process {
+	p, ok := t.procs[pid]
+	if !ok {
+		p = &process{Counter: Counter{PID: pid, Name: name(pid)}, remotes: map[remoteKey]*remote{}}
+		p.Key = processKey(p.PID, p.Name)
+		t.procs[pid] = p
+	}
+	return p
+}
+
+// list drops the processes and remotes that have been idle for idleTimeout,
+// so that the table does not grow with every short lived process.
 func (t *processTable) list() []Counter {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -111,7 +153,35 @@ func (t *processTable) list() []Counter {
 			delete(t.procs, pid)
 			continue
 		}
+		for key, r := range p.remotes {
+			if now.Sub(r.lastActive) > idleTimeout {
+				delete(p.remotes, key)
+			}
+		}
 		counters = append(counters, p.Counter)
+	}
+	return counters
+}
+
+// remotes returns the counters of the remote endpoints of a process.
+func (t *processTable) remotes(pid int) []Counter {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	p, ok := t.procs[pid]
+	if !ok {
+		return nil
+	}
+	counters := make([]Counter, 0, len(p.remotes))
+	for key, r := range p.remotes {
+		counters = append(counters, Counter{
+			Key:    key.proto + " " + key.addr.String(),
+			Name:   key.addr.Addr().String(),
+			PID:    pid,
+			Recv:   r.recv,
+			Sent:   r.sent,
+			Proto:  key.proto,
+			Remote: key.addr,
+		})
 	}
 	return counters
 }

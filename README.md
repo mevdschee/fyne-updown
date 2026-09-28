@@ -12,7 +12,7 @@ ScriptFUSION, a Windows only .NET application.
 The tray icon shows two animated meters, like UpDown Meter does: upload on the
 top half and download on the bottom half. Unlike UpDown Meter upload is red and
 download green, as uploads are the ones to watch. They are sampled once per
-second. The full scale of the meters is the link speed that the
+second, hovering the icon shows the current speeds. The full scale of the meters is the link speed that the
 adapter reports. Like in UpDown Meter it can be set per adapter, separately
 for download and upload, by clicking the adapter in the Adapters list. Pick a
 preset or type a speed in bits per second like 50M, 2.5G or 512k, Auto goes
@@ -23,8 +23,9 @@ The window (click Show in the tray menu) shows a graph of the recent traffic
 of the metered adapter, like btop does: download above the axis and upload
 below it. Both halves have the same height and use the download and upload
 scale of the adapter. Light gray lines mark 25, 50, 75 and 100% of the scale
-and every 10 seconds. Each second takes two pixels, a wider window shows more
-(up to an hour). Below the graph are two list views:
+and every 10 seconds on the clock, the start of each minute is marked brighter
+and labeled with the time. Each second takes two pixels, a wider window shows
+more (up to an hour). Below the graph are two list views:
 
 - Adapters: the current download and upload speed and the totals of each
   network adapter. The meter shows the adapter selected at the top, Auto picks

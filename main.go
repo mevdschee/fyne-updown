@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
+	"fyne.io/systray"
 	"github.com/mevdschee/fyne-updown/traffic"
 )
 
@@ -78,6 +80,7 @@ type updown struct {
 	adapterRates rates
 	processRates rates
 	trayIcon     fyne.Resource
+	trayText     string
 }
 
 func main() {
@@ -267,13 +270,13 @@ func (u *updown) run() {
 			processRates = u.processRates.update(u.monitor.Processes(), now)
 		}
 		fyne.Do(func() {
-			u.showAdapters(adapterRates)
+			u.showAdapters(adapterRates, now)
 			u.showProcesses(processRates)
 		})
 	}
 }
 
-func (u *updown) showAdapters(adapterRates []rate) {
+func (u *updown) showAdapters(adapterRates []rate, now time.Time) {
 	options := []string{autoAdapter}
 	var metered *rate
 	rows := make([]row, 0, len(adapterRates))
@@ -285,7 +288,7 @@ func (u *updown) showAdapters(adapterRates []rate) {
 		if u.histories[r.Name] == nil {
 			u.histories[r.Name] = &history{}
 		}
-		u.histories[r.Name].add(r.down, r.up)
+		u.histories[r.Name].add(now, r.down, r.up)
 		switch u.adapter.Selected {
 		case r.Name:
 			metered = &adapterRates[i]
@@ -314,6 +317,7 @@ func (u *updown) showAdapters(adapterRates []rate) {
 	}
 	u.summary.SetText(fmt.Sprintf("Down %10s  Up %10s", formatBytes(down)+"/s", formatBytes(up)+"/s"))
 	u.updateMeter(fraction(down, scaleDown), fraction(up, scaleUp))
+	u.updateTrayText(fmt.Sprintf("Down %s, Up %s", formatBytes(down)+"/s", formatBytes(up)+"/s"))
 }
 
 // fraction converts a rate in bytes per second to a part of the scale in
@@ -331,6 +335,20 @@ func (u *updown) updateMeter(down, up float64) {
 	if u.desk != nil && icon != u.trayIcon {
 		u.desk.SetSystemTrayIcon(icon)
 		u.trayIcon = icon
+	}
+}
+
+// updateTrayText shows the speeds when hovering the tray icon. Linux tray
+// hosts show either the tooltip or the title, macOS would show the title
+// next to the icon and Windows has none.
+func (u *updown) updateTrayText(text string) {
+	if u.desk == nil || text == u.trayText {
+		return
+	}
+	u.trayText = text
+	systray.SetTooltip(text)
+	if runtime.GOOS == "linux" {
+		systray.SetTitle(text)
 	}
 }
 

@@ -4,12 +4,12 @@ go 1.25.0
 
 require (
 	fyne.io/fyne/v2 v2.8.1
+	fyne.io/systray v1.12.3-0.20260810170012-af4e8e793ec4
 	github.com/shirou/gopsutil/v4 v4.26.8
 	golang.org/x/sys v0.47.0
 )
 
 require (
-	fyne.io/systray v1.12.3-0.20260810170012-af4e8e793ec4 // indirect
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/FyshOS/fancyfs v0.0.1 // indirect
 	github.com/anthonynsimon/bild v0.14.0 // indirect

@@ -280,11 +280,13 @@ func (u *updown) showAdapters(adapterRates []rate, now time.Time) {
 	options := []string{autoAdapter}
 	var metered *rate
 	rows := make([]row, 0, len(adapterRates))
+	seen := map[string]bool{}
 	for i, r := range adapterRates {
 		if r.Loopback {
 			continue
 		}
 		options = append(options, r.Name)
+		seen[r.Name] = true
 		if u.histories[r.Name] == nil {
 			u.histories[r.Name] = &history{}
 		}
@@ -304,6 +306,12 @@ func (u *updown) showAdapters(adapterRates []rate, now time.Time) {
 			text:   []string{r.Name, formatRate(r.down), formatRate(r.up), formatBytes(float64(r.Recv)), formatBytes(float64(r.Sent))},
 			values: []float64{0, r.down, r.up, float64(r.Recv), float64(r.Sent)},
 		})
+	}
+	// forget adapters that are gone, like the veth adapters of containers
+	for name := range u.histories {
+		if !seen[name] {
+			delete(u.histories, name)
+		}
 	}
 	u.adapters.setRows(rows)
 	if fmt.Sprint(options) != fmt.Sprint(u.adapter.Options) {

@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // The macOS monitor reads the output of nettop, which reports cumulative
@@ -18,6 +19,13 @@ import (
 type darwinMonitor struct {
 	cmd   *exec.Cmd
 	table *processTable
+	// last holds the latest totals of each process, guarded by table.mu
+	last map[int]totals
+}
+
+type totals struct {
+	recv, sent uint64
+	seen       time.Time
 }
 
 func startProcessMonitor() (ProcessMonitor, error) {
@@ -29,7 +37,7 @@ func startProcessMonitor() (ProcessMonitor, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	m := &darwinMonitor{cmd: cmd, table: newProcessTable()}
+	m := &darwinMonitor{cmd: cmd, table: newProcessTable(), last: map[int]totals{}}
 	go m.read(bufio.NewScanner(out))
 	return m, nil
 }
@@ -55,11 +63,15 @@ func (m *darwinMonitor) read(s *bufio.Scanner) {
 		if err1 != nil || err2 != nil || err3 != nil {
 			continue
 		}
-		// nettop reports totals, store them instead of adding
+		// nettop reports totals, add the increase so that idle processes
+		// expire, a decrease means the pid was reused
 		m.table.mu.Lock()
-		m.table.add(pid, func(int) string { return name }, 0, 0)
-		c := m.table.procs[pid]
-		c.Recv, c.Sent = recv, sent
+		prev := m.last[pid]
+		if recv < prev.recv || sent < prev.sent {
+			prev = totals{}
+		}
+		m.last[pid] = totals{recv, sent, time.Now()}
+		m.table.add(pid, func(int) string { return name }, recv-prev.recv, sent-prev.sent)
 		m.table.mu.Unlock()
 	}
 }
@@ -82,6 +94,13 @@ func cutLast(s, sep string) (string, string, bool) {
 }
 
 func (m *darwinMonitor) Processes() []Counter {
+	m.table.mu.Lock()
+	for pid, t := range m.last {
+		if time.Since(t.seen) > idleTimeout {
+			delete(m.last, pid)
+		}
+	}
+	m.table.mu.Unlock()
 	return m.table.list()
 }
 

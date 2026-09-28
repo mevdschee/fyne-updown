@@ -35,30 +35,48 @@ const (
 	labelContrast  = 50
 )
 
-// history holds the latest rates of an adapter in bytes per second, oldest
-// first.
+// sample holds the rates of an adapter in bytes per second.
+type sample struct {
+	time     time.Time
+	down, up float64
+}
+
+// history is a ring buffer with the latest samples of an adapter, it grows
+// up to historySize and then overwrites the oldest sample.
 type history struct {
-	down, up []float64
-	times    []time.Time
+	samples []sample
+	// next is the index the next sample is written to once the buffer is full
+	next int
 }
 
 func (h *history) add(t time.Time, down, up float64) {
-	if len(h.down) == historySize {
-		h.down, h.up, h.times = h.down[1:], h.up[1:], h.times[1:]
+	s := sample{t, down, up}
+	if len(h.samples) < historySize {
+		h.samples = append(h.samples, s)
+		return
 	}
-	h.down = append(h.down, down)
-	h.up = append(h.up, up)
-	h.times = append(h.times, t)
+	h.samples[h.next] = s
+	h.next = (h.next + 1) % historySize
+}
+
+func (h *history) len() int {
+	return len(h.samples)
+}
+
+// at returns the sample i samples before the latest one.
+func (h *history) at(i int) sample {
+	n := len(h.samples)
+	return h.samples[((h.next-1-i)%n+n)%n]
 }
 
 // timeAt returns the time of the sample i seconds before the latest one,
 // beyond the oldest sample it counts back one second per sample.
 func (h *history) timeAt(i int) time.Time {
-	n := len(h.times)
+	n := h.len()
 	if i < n {
-		return h.times[n-1-i]
+		return h.at(i).time
 	}
-	return h.times[0].Add(-time.Duration(i-n+1) * time.Second)
+	return h.at(n - 1).time.Add(-time.Duration(i-n+1) * time.Second)
 }
 
 type marker struct {
@@ -72,7 +90,7 @@ type marker struct {
 // columns, where a column starts a new period of 10 seconds.
 func (h *history) markers(columns int) []marker {
 	var markers []marker
-	if len(h.times) == 0 {
+	if h.len() == 0 {
 		return nil
 	}
 	for i := 0; i < columns; i++ {
@@ -181,7 +199,7 @@ func (g *graph) draw(w, h int) image.Image {
 	if size := g.Size(); size.Width > 0 {
 		col = max(1, int(math.Round(float64(w)/float64(size.Width)*sampleWidth)))
 	}
-	n := len(g.samples.down)
+	n := g.samples.len()
 	grid := themeGray(gridContrast)
 	// lines at 25, 50, 75 and 100% of the download and upload scale
 	for q := 1; q <= 4; q++ {
@@ -201,8 +219,9 @@ func (g *graph) draw(w, h int) image.Image {
 	for i := 0; i < n && w-i*col > 0; i++ {
 		x1 := w - i*col
 		x0 := max(0, x1-col)
-		down := min(axis, int(math.Round(g.samples.down[n-1-i]*downPixels)))
-		up := min(h-axis, int(math.Round(g.samples.up[n-1-i]*upPixels)))
+		s := g.samples.at(i)
+		down := min(axis, int(math.Round(s.down*downPixels)))
+		up := min(h-axis, int(math.Round(s.up*upPixels)))
 		for y := axis - down; y < axis; y++ {
 			c := gradient(downDark, downBright, float64(axis-y)/float64(axis))
 			fill(img, image.Rect(x0, y, x1, y+1), c)

@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"time"
 
 	psnet "github.com/shirou/gopsutil/v4/net"
 )
@@ -64,34 +65,53 @@ func StartProcessMonitor() (ProcessMonitor, error) {
 	return startProcessMonitor()
 }
 
+// idleTimeout is how long a process is listed after its last traffic.
+const idleTimeout = time.Hour
+
 // processTable accumulates byte counts per process id.
 type processTable struct {
 	mu    sync.Mutex
-	procs map[int]*Counter
+	procs map[int]*process
+}
+
+type process struct {
+	Counter
+	lastActive time.Time
 }
 
 func newProcessTable() *processTable {
-	return &processTable{procs: map[int]*Counter{}}
+	return &processTable{procs: map[int]*process{}}
 }
 
 // add must be called with mu held, name is only called for new processes.
 func (t *processTable) add(pid int, name func(pid int) string, recv, sent uint64) {
-	c, ok := t.procs[pid]
-	if !ok {
-		c = &Counter{PID: pid, Name: name(pid)}
-		c.Key = processKey(c.PID, c.Name)
-		t.procs[pid] = c
+	if recv+sent == 0 {
+		return
 	}
-	c.Recv += recv
-	c.Sent += sent
+	p, ok := t.procs[pid]
+	if !ok {
+		p = &process{Counter: Counter{PID: pid, Name: name(pid)}}
+		p.Key = processKey(p.PID, p.Name)
+		t.procs[pid] = p
+	}
+	p.Recv += recv
+	p.Sent += sent
+	p.lastActive = time.Now()
 }
 
+// list drops the processes that have been idle for idleTimeout, so that the
+// table does not grow with every short lived process.
 func (t *processTable) list() []Counter {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	now := time.Now()
 	counters := make([]Counter, 0, len(t.procs))
-	for _, c := range t.procs {
-		counters = append(counters, *c)
+	for pid, p := range t.procs {
+		if now.Sub(p.lastActive) > idleTimeout {
+			delete(t.procs, pid)
+			continue
+		}
+		counters = append(counters, p.Counter)
 	}
 	return counters
 }

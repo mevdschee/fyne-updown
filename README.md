@@ -31,7 +31,8 @@ more (up to an hour). Below the graph are two list views:
   network adapter. The meter shows the adapter selected at the top, Auto picks
   the adapter with the most traffic.
 - Processes: the current download and upload speed and the totals of each
-  process since the app was started. Traffic that can not be linked to a
+  process since the app was started. Processes that have been idle for an
+  hour are removed from the list. Traffic that can not be linked to a
   process is listed as "(unknown)".
 
 Closing the window hides it, use Quit in the tray menu to exit.

@@ -19,7 +19,12 @@ preset or type a speed in bits per second like 50M, 2.5G or 512k, Auto goes
 back to the link speed. Wireless adapters on Linux do not report a link speed,
 their meters stay empty until a scale is set.
 
-The window (click Show in the tray menu) has two list views:
+The window (click Show in the tray menu) shows a graph of the recent traffic
+of the metered adapter, like btop does: download above the axis and upload
+below it. Both halves have the same height and use the download and upload
+scale of the adapter. Light gray lines mark 25, 50, 75 and 100% of the scale
+and every 10 seconds. Each second takes two pixels, a wider window shows more
+(up to an hour). Below the graph are two list views:
 
 - Adapters: the current download and upload speed and the totals of each
   network adapter. The meter shows the adapter selected at the top, Auto picks

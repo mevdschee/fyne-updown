@@ -69,6 +69,8 @@ type updown struct {
 	summary   *widget.Label
 	adapter   *widget.Select
 	status    *widget.Label
+	graph     *graph
+	histories map[string]*history
 	adapters  *listView
 	processes *listView
 	monitor   traffic.ProcessMonitor
@@ -80,10 +82,10 @@ type updown struct {
 
 func main() {
 	a := app.NewWithID("com.tqdev.fyne-updown")
-	u := &updown{app: a}
+	u := &updown{app: a, histories: map[string]*history{}}
 	u.window = a.NewWindow("UpDown Meter")
 	u.buildUI()
-	u.window.Resize(fyne.NewSize(720, 420))
+	u.window.Resize(fyne.NewSize(720, 540))
 	u.window.SetCloseIntercept(u.window.Hide)
 
 	if desk, ok := a.(desktop.App); ok {
@@ -152,7 +154,8 @@ func (u *updown) buildUI() {
 		container.NewTabItem("Adapters", u.adapters.table),
 		container.NewTabItem("Processes", container.NewBorder(nil, u.status, nil, nil, u.processes.table)),
 	)
-	u.window.SetContent(container.NewBorder(top, nil, nil, nil, tabs))
+	u.graph = newGraph()
+	u.window.SetContent(container.NewBorder(container.NewVBox(top, u.graph), nil, nil, nil, tabs))
 }
 
 func (u *updown) show() {
@@ -285,6 +288,10 @@ func (u *updown) showAdapters(adapterRates []rate) {
 			continue
 		}
 		options = append(options, r.Name)
+		if u.histories[r.Name] == nil {
+			u.histories[r.Name] = &history{}
+		}
+		u.histories[r.Name].add(r.down, r.up)
 		switch u.adapter.Selected {
 		case r.Name:
 			metered = &adapterRates[i]
@@ -312,6 +319,7 @@ func (u *updown) showAdapters(adapterRates []rate) {
 	if metered != nil {
 		down, up = metered.down, metered.up
 		scaleDown, scaleUp = u.scale(*metered)
+		u.graph.set(u.histories[metered.Name], scaleDown, scaleUp)
 	}
 	u.summary.SetText(fmt.Sprintf("Down %10s  Up %10s", formatBytes(down)+"/s", formatBytes(up)+"/s"))
 	u.updateMeter(fraction(down, scaleDown), fraction(up, scaleUp))

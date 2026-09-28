@@ -75,8 +75,8 @@ func (g *graph) MinSize() fyne.Size {
 
 func (g *graph) set(samples *history, scaleDown, scaleUp float64) {
 	g.samples, g.scaleDown, g.scaleUp = samples, scaleDown, scaleUp
-	g.downText.SetText("Down " + formatScale(scaleDown, scaleDown > 0))
-	g.upText.SetText("Up " + formatScale(scaleUp, scaleUp > 0))
+	g.downText.SetText("Down " + formatScale(scaleDown))
+	g.upText.SetText("Up " + formatScale(scaleUp))
 	g.raster.Refresh()
 }
 

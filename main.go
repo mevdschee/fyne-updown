@@ -132,8 +132,6 @@ func (u *updown) buildUI() {
 		{"Up", 100, true},
 		{"Received", 110, true},
 		{"Sent", 110, true},
-		{"Down scale", 110, true},
-		{"Up scale", 110, true},
 	}, 0, false)
 	u.adapters.onTapped = func(r row) { u.editScale(r.text[0]) }
 	u.processes = newListView([]column{
@@ -246,16 +244,12 @@ func formatBits(bits float64) string {
 	return fmt.Sprintf("%g %cbit/s", math.Round(bits/math.Pow(1000, float64(exp))*100)/100, "kMG"[exp-1])
 }
 
-// formatScale marks the link speed as automatic and shows why the meter
-// stays empty when it is unknown.
-func formatScale(bits float64, configured bool) string {
-	switch {
-	case configured:
-		return formatBits(bits)
-	case bits == 0:
+// formatScale shows why the meter stays empty when the scale is unknown.
+func formatScale(bits float64) string {
+	if bits == 0 {
 		return "unknown"
 	}
-	return formatBits(bits) + " (auto)"
+	return formatBits(bits)
 }
 
 // run samples the counters every second, like UpDown Meter does.
@@ -303,12 +297,9 @@ func (u *updown) showAdapters(adapterRates []rate) {
 		if r.Recv+r.Sent == 0 {
 			continue
 		}
-		scaleDown, scaleUp := u.scale(r)
 		rows = append(rows, row{
-			text: []string{r.Name, formatRate(r.down), formatRate(r.up), formatBytes(float64(r.Recv)), formatBytes(float64(r.Sent)),
-				formatScale(scaleDown, u.app.Preferences().Float("scaleDown/"+r.Name) > 0),
-				formatScale(scaleUp, u.app.Preferences().Float("scaleUp/"+r.Name) > 0)},
-			values: []float64{0, r.down, r.up, float64(r.Recv), float64(r.Sent), scaleDown, scaleUp},
+			text:   []string{r.Name, formatRate(r.down), formatRate(r.up), formatBytes(float64(r.Recv)), formatBytes(float64(r.Sent))},
+			values: []float64{0, r.down, r.up, float64(r.Recv), float64(r.Sent)},
 		})
 	}
 	u.adapters.setRows(rows)

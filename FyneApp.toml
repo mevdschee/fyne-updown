@@ -1,0 +1,11 @@
+Website = "https://tqdev.com"
+
+[Details]
+Icon = "Icon.png"
+Name = "fyne-updown"
+ID = "com.tqdev.fyne-updown"
+Version = "0.1.0"
+Build = 2
+
+[LinuxAndBSD]
+Categories = ["Network", "Monitor"]

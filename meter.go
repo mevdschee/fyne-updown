@@ -12,8 +12,9 @@ import (
 )
 
 // The tray icon mimics the one of UpDown Meter: a dark frame with the upload
-// meter (green) on the top half and the download meter (red) on the bottom
-// half, drawn at twice the original 16x16 size for high DPI trays.
+// meter on the top half and the download meter on the bottom half, drawn at
+// twice the original 16x16 size for high DPI trays. Unlike UpDown Meter the
+// upload is red and the download green, as uploads are the ones to watch.
 
 const (
 	iconSize   = 32
@@ -23,10 +24,10 @@ const (
 var (
 	frameBorder = color.RGBA{128, 128, 128, 255}
 	frameFill   = color.RGBA{80, 80, 80, 255}
-	upBright    = color.RGBA{0, 200, 0, 255}
-	upDark      = color.RGBA{0, 70, 0, 255}
-	downBright  = color.RGBA{220, 0, 0, 255}
-	downDark    = color.RGBA{70, 0, 0, 255}
+	upBright    = color.RGBA{220, 0, 0, 255}
+	upDark      = color.RGBA{70, 0, 0, 255}
+	downBright  = color.RGBA{0, 200, 0, 255}
+	downDark    = color.RGBA{0, 70, 0, 255}
 )
 
 var meterIcons = map[[2]int]fyne.Resource{}

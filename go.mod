@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	fyne.io/fyne/v2 v2.8.1
 	fyne.io/systray v1.12.3-0.20260810170012-af4e8e793ec4
+	github.com/creack/pty v1.1.24
 	github.com/shirou/gopsutil/v4 v4.26.8
 	golang.org/x/sys v0.47.0
 )

@@ -317,7 +317,7 @@ func (u *updown) showAdapters(adapterRates []rate, now time.Time) {
 	}
 	u.summary.SetText(fmt.Sprintf("Down %10s  Up %10s", formatBytes(down)+"/s", formatBytes(up)+"/s"))
 	u.updateMeter(fraction(down, scaleDown), fraction(up, scaleUp))
-	u.updateTrayText(fmt.Sprintf("Down %s, Up %s", formatBytes(down)+"/s", formatBytes(up)+"/s"))
+	u.updateTrayText(down, up)
 }
 
 // fraction converts a rate in bytes per second to a part of the scale in
@@ -338,18 +338,29 @@ func (u *updown) updateMeter(down, up float64) {
 	}
 }
 
-// updateTrayText shows the speeds when hovering the tray icon. Linux tray
-// hosts show either the tooltip or the title, macOS would show the title
-// next to the icon and Windows has none.
-func (u *updown) updateTrayText(text string) {
-	if u.desk == nil || text == u.trayText {
+// updateTrayText shows the speeds when hovering the tray icon, below the
+// name and version of the app. Linux tray hosts show the title in bold above
+// the tooltip, macOS would show the title next to the icon and Windows has
+// none, so there the name goes in the tooltip.
+func (u *updown) updateTrayText(down, up float64) {
+	if u.desk == nil {
 		return
+	}
+	meta := u.app.Metadata()
+	title := meta.Name + " v" + meta.Version
+	speeds := fmt.Sprintf("Down: %s\nUp: %s", formatBytes(down)+"/s", formatBytes(up)+"/s")
+	text := title + "\n" + speeds
+	if runtime.GOOS == "linux" {
+		text = speeds
+	}
+	if text == u.trayText {
+		return
+	}
+	if u.trayText == "" && runtime.GOOS == "linux" {
+		systray.SetTitle(title)
 	}
 	u.trayText = text
 	systray.SetTooltip(text)
-	if runtime.GOOS == "linux" {
-		systray.SetTitle(text)
-	}
 }
 
 func (u *updown) showProcesses(processRates []rate) {

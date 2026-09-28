@@ -4,8 +4,8 @@ Website = "https://tqdev.com"
 Icon = "Icon.png"
 Name = "fyne-updown"
 ID = "com.tqdev.fyne-updown"
-Version = "0.1.4"
-Build = 33
+Version = "0.1.5"
+Build = 39
 
 [LinuxAndBSD]
 Categories = ["Network", "Monitor"]

@@ -97,3 +97,9 @@ fyne-cross/dist as a GitHub release, so run package.sh first.
 ### Known issues
 
 On GNOME the tray icon is only shown with the AppIndicator extension installed.
+
+macOS has no accelerated OpenGL renderer in a virtual machine, and glfw always
+asks for one, so the tray and the window would fail to come up with "NSGL:
+Failed to find a suitable pixel format". `third_party/glfw` carries a patched
+copy of glfw that retries with Apple's CPU renderer when that happens, wired up
+through a `replace` in go.mod. See third_party/README.md for the details.

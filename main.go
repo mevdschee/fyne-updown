@@ -1,15 +1,18 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
 	"github.com/mevdschee/fyne-updown/traffic"
@@ -19,9 +22,12 @@ const (
 	// autoAdapter meters the adapter with the most traffic, summing all
 	// adapters would count bridged and virtual traffic more than once
 	autoAdapter = "Auto"
-	// lowest full scale of the meter, so that idle traffic stays small
-	minScale = 64 * 1000
+	// autoScale uses the link speed that the adapter reports
+	autoScale = "Auto"
 )
+
+// scalePresets are offered in the scale dialog, other values can be typed.
+var scalePresets = []string{autoScale, "10 Mbit/s", "100 Mbit/s", "1 Gbit/s", "10 Gbit/s"}
 
 // rates turns cumulative counters into bytes per second.
 type rates struct {
@@ -69,17 +75,12 @@ type updown struct {
 
 	adapterRates rates
 	processRates rates
-	peakDown     float64
-	peakUp       float64
 	trayIcon     fyne.Resource
 }
 
 func main() {
 	a := app.NewWithID("com.tqdev.fyne-updown")
 	u := &updown{app: a}
-	u.peakDown = max(minScale, a.Preferences().Float("peakDown"))
-	u.peakUp = max(minScale, a.Preferences().Float("peakUp"))
-
 	u.window = a.NewWindow("UpDown Meter")
 	u.buildUI()
 	u.window.Resize(fyne.NewSize(720, 420))
@@ -89,7 +90,6 @@ func main() {
 		u.desk = desk
 		desk.SetSystemTrayMenu(fyne.NewMenu("UpDown Meter",
 			fyne.NewMenuItem("Show", u.show),
-			fyne.NewMenuItem("Reset meter scale", u.resetScale),
 		))
 		u.trayIcon = meterIcon(0, 0)
 		desk.SetSystemTrayIcon(u.trayIcon)
@@ -130,7 +130,10 @@ func (u *updown) buildUI() {
 		{"Up", 100, true},
 		{"Received", 110, true},
 		{"Sent", 110, true},
+		{"Down scale", 110, true},
+		{"Up scale", 110, true},
 	}, 0, false)
+	u.adapters.onTapped = func(r row) { u.editScale(r.text[0]) }
 	u.processes = newListView([]column{
 		{"Process", 200, false},
 		{"PID", 70, true},
@@ -157,10 +160,99 @@ func (u *updown) show() {
 	u.window.RequestFocus()
 }
 
-func (u *updown) resetScale() {
-	u.peakDown, u.peakUp = minScale, minScale
-	u.app.Preferences().SetFloat("peakDown", u.peakDown)
-	u.app.Preferences().SetFloat("peakUp", u.peakUp)
+// scale returns the full scale of the meter in bits per second: the value
+// configured for the adapter or else its link speed, zero when unknown.
+func (u *updown) scale(r rate) (down, up float64) {
+	down = u.app.Preferences().Float("scaleDown/" + r.Name)
+	up = u.app.Preferences().Float("scaleUp/" + r.Name)
+	if down == 0 {
+		down = float64(r.LinkDown)
+	}
+	if up == 0 {
+		up = float64(r.LinkUp)
+	}
+	return down, up
+}
+
+// editScale lets the user override the link speed of an adapter, which may
+// be unknown or higher than the speed of the internet connection.
+func (u *updown) editScale(name string) {
+	downKey, upKey := "scaleDown/"+name, "scaleUp/"+name
+	down := scaleEntry(u.app.Preferences().Float(downKey))
+	up := scaleEntry(u.app.Preferences().Float(upKey))
+	items := []*widget.FormItem{
+		widget.NewFormItem("Download", down),
+		widget.NewFormItem("Upload", up),
+	}
+	d := dialog.NewForm("Meter scale of "+name, "Save", "Cancel", items, func(ok bool) {
+		if !ok {
+			return
+		}
+		downBits, _ := parseBits(down.Text)
+		upBits, _ := parseBits(up.Text)
+		u.app.Preferences().SetFloat(downKey, downBits)
+		u.app.Preferences().SetFloat(upKey, upBits)
+	}, u.window)
+	d.Resize(fyne.NewSize(360, d.MinSize().Height))
+	d.Show()
+}
+
+func scaleEntry(bits float64) *widget.SelectEntry {
+	e := widget.NewSelectEntry(scalePresets)
+	e.SetText(autoScale)
+	if bits > 0 {
+		e.SetText(formatBits(bits))
+	}
+	e.Validator = func(s string) error {
+		_, err := parseBits(s)
+		return err
+	}
+	return e
+}
+
+// parseBits reads a speed in bits per second like "50M", "2.5 Gbit/s" or
+// "512k", Auto (or nothing) gives zero.
+func parseBits(s string) (float64, error) {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" || s == strings.ToLower(autoScale) {
+		return 0, nil
+	}
+	for _, unit := range []string{"bit/s", "bps", "bit", "b"} {
+		if t, ok := strings.CutSuffix(s, unit); ok {
+			s = strings.TrimSpace(t)
+			break
+		}
+	}
+	mult := 1.0
+	if i := strings.IndexAny(s, "kmg"); i >= 0 && i == len(s)-1 {
+		mult = map[byte]float64{'k': 1e3, 'm': 1e6, 'g': 1e9}[s[i]]
+		s = strings.TrimSpace(s[:i])
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil || v <= 0 || math.IsInf(v, 0) {
+		return 0, errors.New("enter a speed like 50M, 2.5G or 512k")
+	}
+	return v * mult, nil
+}
+
+func formatBits(bits float64) string {
+	if bits < 1000 {
+		return fmt.Sprintf("%g bit/s", bits)
+	}
+	exp := min(int(math.Log10(bits)/3), 3)
+	return fmt.Sprintf("%g %cbit/s", math.Round(bits/math.Pow(1000, float64(exp))*100)/100, "kMG"[exp-1])
+}
+
+// formatScale marks the link speed as automatic and shows why the meter
+// stays empty when it is unknown.
+func formatScale(bits float64, configured bool) string {
+	switch {
+	case configured:
+		return formatBits(bits)
+	case bits == 0:
+		return "unknown"
+	}
+	return formatBits(bits) + " (auto)"
 }
 
 // run samples the counters every second, like UpDown Meter does.
@@ -204,35 +296,39 @@ func (u *updown) showAdapters(adapterRates []rate) {
 		if r.Recv+r.Sent == 0 {
 			continue
 		}
+		scaleDown, scaleUp := u.scale(r)
 		rows = append(rows, row{
-			text:   []string{r.Name, formatRate(r.down), formatRate(r.up), formatBytes(float64(r.Recv)), formatBytes(float64(r.Sent))},
-			values: []float64{0, r.down, r.up, float64(r.Recv), float64(r.Sent)},
+			text: []string{r.Name, formatRate(r.down), formatRate(r.up), formatBytes(float64(r.Recv)), formatBytes(float64(r.Sent)),
+				formatScale(scaleDown, u.app.Preferences().Float("scaleDown/"+r.Name) > 0),
+				formatScale(scaleUp, u.app.Preferences().Float("scaleUp/"+r.Name) > 0)},
+			values: []float64{0, r.down, r.up, float64(r.Recv), float64(r.Sent), scaleDown, scaleUp},
 		})
 	}
 	u.adapters.setRows(rows)
 	if fmt.Sprint(options) != fmt.Sprint(u.adapter.Options) {
 		u.adapter.SetOptions(options)
 	}
-	var down, up float64
+	var down, up, scaleDown, scaleUp float64
 	if metered != nil {
 		down, up = metered.down, metered.up
+		scaleDown, scaleUp = u.scale(*metered)
 	}
 	u.summary.SetText(fmt.Sprintf("Down %10s  Up %10s", formatBytes(down)+"/s", formatBytes(up)+"/s"))
-	u.updateMeter(down, up)
+	u.updateMeter(fraction(down, scaleDown), fraction(up, scaleUp))
 }
 
-// updateMeter scales the tray meter to the highest speed seen so far, which
-// takes the place of the manual calibration in UpDown Meter.
+// fraction converts a rate in bytes per second to a part of the scale in
+// bits per second, an unknown scale leaves the meter empty.
+func fraction(bytes, scale float64) float64 {
+	if scale <= 0 {
+		return 0
+	}
+	return bytes * 8 / scale
+}
+
+// updateMeter draws the tray meter for the given fractions of the scale.
 func (u *updown) updateMeter(down, up float64) {
-	if down > u.peakDown {
-		u.peakDown = down
-		u.app.Preferences().SetFloat("peakDown", down)
-	}
-	if up > u.peakUp {
-		u.peakUp = up
-		u.app.Preferences().SetFloat("peakUp", up)
-	}
-	icon := meterIcon(up/u.peakUp, down/u.peakDown)
+	icon := meterIcon(up, down)
 	if u.desk != nil && icon != u.trayIcon {
 		u.desk.SetSystemTrayIcon(icon)
 		u.trayIcon = icon

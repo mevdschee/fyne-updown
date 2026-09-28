@@ -19,6 +19,10 @@ type Counter struct {
 	Sent uint64
 	// Loopback is set for loopback adapters.
 	Loopback bool
+	// LinkDown and LinkUp are the link speeds of an adapter in bits per
+	// second, zero when unknown.
+	LinkDown uint64
+	LinkUp   uint64
 }
 
 // Adapters returns the cumulative counters of all network adapters.
@@ -27,21 +31,20 @@ func Adapters() ([]Counter, error) {
 	if err != nil {
 		return nil, err
 	}
-	loopback := map[string]bool{}
-	if ifaces, err := net.Interfaces(); err == nil {
-		for _, iface := range ifaces {
-			loopback[iface.Name] = iface.Flags&net.FlagLoopback != 0
+	ifaces := map[string]net.Interface{}
+	if list, err := net.Interfaces(); err == nil {
+		for _, iface := range list {
+			ifaces[iface.Name] = iface
 		}
 	}
 	counters := make([]Counter, 0, len(stats))
 	for _, s := range stats {
-		counters = append(counters, Counter{
-			Key:      s.Name,
-			Name:     s.Name,
-			Recv:     s.BytesRecv,
-			Sent:     s.BytesSent,
-			Loopback: loopback[s.Name],
-		})
+		c := Counter{Key: s.Name, Name: s.Name, Recv: s.BytesRecv, Sent: s.BytesSent}
+		if iface, ok := ifaces[s.Name]; ok {
+			c.Loopback = iface.Flags&net.FlagLoopback != 0
+			c.LinkDown, c.LinkUp = linkSpeed(iface)
+		}
+		counters = append(counters, c)
 	}
 	sort.Slice(counters, func(i, j int) bool { return counters[i].Name < counters[j].Name })
 	return counters, nil

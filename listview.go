@@ -29,6 +29,8 @@ type listView struct {
 	sortCol  int
 	sortDesc bool
 	table    *widget.Table
+	// onTapped is called when a row is tapped, if set
+	onTapped func(r row)
 }
 
 func newListView(columns []column, sortCol int, sortDesc bool) *listView {
@@ -50,8 +52,13 @@ func newListView(columns []column, sortCol int, sortDesc bool) *listView {
 		},
 	)
 	l.table.ShowHeaderColumn = false
-	// rows are for reading only, until blocking and shaping are added
-	l.table.OnSelected = func(id widget.TableCellID) { l.table.UnselectAll() }
+	// rows do not stay selected, a tap only opens the action of the row
+	l.table.OnSelected = func(id widget.TableCellID) {
+		l.table.UnselectAll()
+		if l.onTapped != nil && id.Row >= 0 && id.Row < len(l.rows) {
+			l.onTapped(l.rows[id.Row])
+		}
+	}
 	l.table.CreateHeader = func() fyne.CanvasObject {
 		b := widget.NewButton("", nil)
 		b.Importance = widget.LowImportance

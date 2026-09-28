@@ -11,10 +11,12 @@ ScriptFUSION, a Windows only .NET application.
 
 The tray icon shows two animated meters, like UpDown Meter does: upload in
 green on the top half and download in red on the bottom half. They are sampled
-once per second. UpDown Meter needs to be calibrated by entering the speed of
-the connection, this app instead scales the meters to the highest speed seen
-so far (at least 64 kB/s). This scale is remembered between runs and can be
-reset from the tray menu.
+once per second. The full scale of the meters is the link speed that the
+adapter reports. Like in UpDown Meter it can be set per adapter, separately
+for download and upload, by clicking the adapter in the Adapters list. Pick a
+preset or type a speed in bits per second like 50M, 2.5G or 512k, Auto goes
+back to the link speed. Wireless adapters on Linux do not report a link speed,
+their meters stay empty until a scale is set.
 
 The window (click Show in the tray menu) has two list views:
 

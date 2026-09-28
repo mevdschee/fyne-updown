@@ -11,11 +11,11 @@ import (
 	"fyne.io/fyne/v2"
 )
 
-// The tray icon mimics the one of UpDown Meter: a dark frame with two meters,
-// drawn at twice the original 16x16 size for high DPI trays. Unlike UpDown
-// Meter the download meter is on the top half and the upload meter on the
-// bottom half, like in the graph. The upload is red and the download green,
-// as uploads are the ones to watch.
+// The tray icon is based on the one of UpDown Meter, drawn at twice the
+// original 16x16 size for high DPI trays. Unlike UpDown Meter it is flat and
+// the meters stand upright: two gray halves with a transparent gap between
+// them, download on the left and upload on the right. The upload is red and
+// the download green, as uploads are the ones to watch.
 
 const (
 	iconSize   = 32
@@ -23,12 +23,11 @@ const (
 )
 
 var (
-	frameBorder = color.RGBA{128, 128, 128, 255}
-	frameFill   = color.RGBA{80, 80, 80, 255}
-	upBright    = color.RGBA{220, 0, 0, 255}
-	upDark      = color.RGBA{70, 0, 0, 255}
-	downBright  = color.RGBA{0, 200, 0, 255}
-	downDark    = color.RGBA{0, 70, 0, 255}
+	meterBackground = color.RGBA{80, 80, 80, 255}
+	upBright        = color.RGBA{220, 0, 0, 255}
+	upDark          = color.RGBA{70, 0, 0, 255}
+	downBright      = color.RGBA{0, 200, 0, 255}
+	downDark        = color.RGBA{0, 70, 0, 255}
 )
 
 var meterIcons = map[[2]int]fyne.Resource{}
@@ -58,24 +57,17 @@ func quantize(f float64) int {
 
 func drawMeter(up, down int) *image.RGBA {
 	img := image.NewRGBA(image.Rect(0, 0, iconSize, iconSize))
-	fill(img, image.Rect(0, 0, iconSize, iconSize), color.Black)
-	fill(img, image.Rect(0, 0, iconSize-2, iconSize-2), frameBorder)
-	fill(img, image.Rect(2, 2, iconSize-2, iconSize-2), frameFill)
-	// central divider
-	fill(img, image.Rect(2, 14, iconSize-2, 16), frameBorder)
-	fill(img, image.Rect(2, 16, iconSize-2, 18), color.Black)
-	drawBar(img, 2, down, downBright, downDark)
-	drawBar(img, 18, up, upBright, upDark)
+	drawBar(img, 0, down, downBright)
+	drawBar(img, iconSize/2+1, up, upBright)
 	return img
 }
 
-// drawBar draws a striped bar of 12 pixels high, starting at row y.
-func drawBar(img *image.RGBA, y, steps int, bright, dark color.RGBA) {
-	width := steps * (iconSize - 4) / meterSteps
-	fill(img, image.Rect(2, y, 2+width, y+12), bright)
-	for x := 2 + 4; x < 2+width; x += 6 {
-		fill(img, image.Rect(x, y, min(x+2, 2+width), y+12), dark)
-	}
+// drawBar draws a meter of 15 pixels wide from column x, the bar grows
+// upwards and has a margin of two pixels.
+func drawBar(img *image.RGBA, x, steps int, c color.RGBA) {
+	fill(img, image.Rect(x, 0, x+iconSize/2-1, iconSize), meterBackground)
+	top := iconSize - 2 - steps*(iconSize-4)/meterSteps
+	fill(img, image.Rect(x+2, top, x+iconSize/2-3, iconSize-2), c)
 }
 
 func fill(img *image.RGBA, r image.Rectangle, c color.Color) {
